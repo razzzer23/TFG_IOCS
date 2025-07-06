@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Filtrado de IoCs</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .filters {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        select, input[type="range"] {
+            padding: 5px;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 14px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            font-size: 14px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #scoreValue {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="/"><button id="backBtn">Dashboard</button></a>
+
+    <h1>Explorador de IoCs con Filtros</h1>
+
+    <div class="filters">
+        <label>Tipo:
+            <select id="typeFilter">
+                <option value="">Todos</option>
+            </select>
+        </label>
+
+        <label>País:
+            <select id="countryFilter">
+                <option value="">Todos</option>
+            </select>
+        </label>
+
+        <label>Score mínimo: <span id="scoreValue">1</span>
+            <input type="range" id="scoreFilter" min="1" max="10" value="1">
+        </label>
+    </div>
+
+    <table id="iocTable">
+        <thead>
+            <tr>
+                <th>Indicator</th>
+                <th>Tipo</th>
+                <th>País</th>
+                <th>Score</th>
+                <th>Descripción</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        let allData = [];
+
+        async function fetchIoCs() {
+            const res = await fetch("/filtered_iocs");
+            allData = await res.json();
+            populateFilters();
+            applyFilters();
+        }
+
+        function populateFilters() {
+            const typeSet = new Set();
+            const countrySet = new Set();
+
+            allData.forEach(ioc => {
+                if (ioc.type) typeSet.add(ioc.type);
+                if (ioc.country) countrySet.add(ioc.country);
+            });
+
+            const typeFilter = document.getElementById("typeFilter");
+            typeSet.forEach(type => {
+                const opt = document.createElement("option");
+                opt.value = type;
+                opt.textContent = type;
+                typeFilter.appendChild(opt);
+            });
+
+            const countryFilter = document.getElementById("countryFilter");
+            countrySet.forEach(country => {
+                const opt = document.createElement("option");
+                opt.value = country;
+                opt.textContent = country;
+                countryFilter.appendChild(opt);
+            });
+        }
+
+        function applyFilters() {
+            const type = document.getElementById("typeFilter").value;
+            const country = document.getElementById("countryFilter").value;
+            const minScore = parseInt(document.getElementById("scoreFilter").value);
+
+            const filtered = allData.filter(ioc =>
+                (!type || ioc.type === type) &&
+                (!country || ioc.country === country) &&
+                (ioc.threat_score >= minScore)
+            );
+
+            const tbody = document.querySelector("#iocTable tbody");
+            tbody.innerHTML = "";
+            filtered.forEach(ioc => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>${ioc.indicator || "-"}</td>
+                    <td>${ioc.type || "-"}</td>
+                    <td>${ioc.country || "-"}</td>
+                    <td>${ioc.threat_score}</td>
+                    <td>${ioc.description || "-"}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById("scoreFilter").addEventListener("input", e => {
+            document.getElementById("scoreValue").textContent = e.target.value;
+            applyFilters();
+        });
+
+        document.getElementById("typeFilter").addEventListener("change", applyFilters);
+        document.getElementById("countryFilter").addEventListener("change", applyFilters);
+
+        fetchIoCs();
+    </script>
+</body>
+</html>

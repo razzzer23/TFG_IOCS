@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Threat Intelligence Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        button {
+            padding: 10px 18px;
+            font-size: 15px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: default;
+        }
+
+        #status {
+            text-align: center;
+            font-weight: bold;
+            color: #444;
+            margin-top: 10px;
+        }
+
+        .dashboard-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .ioc-type {
+            padding: 12px 18px;
+            margin: 10px;
+            background-color: #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            display: inline-block;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .ioc-type:hover {
+            background-color: #cfd8dc;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        th {
+            background-color: #444;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .high-risk {
+            background-color: #ffe6e6 !important;
+        }
+
+        .medium-risk {
+            background-color: #fff8dc !important;
+        }
+
+        .low-risk {
+            background-color: #e7fbe7 !important;
+        }
+		.indicator-col {
+    max-width: 300px;
+    word-wrap: break-word;
+    white-space: normal;
+}
+
+    </style>
+</head>
+<body>
+    <h1>Threat Intelligence Dashboard</h1>
+
+    <div class="button-group">
+        <button id="refreshBtn">Refresh IoCs</button>
+        <button id="recalcBtn">Recalcular Scores</button>
+        <a href="/charts"><button>Gráficos</button></a>
+        <a href="/filters"><button>Filtrar IoCs</button></a>
+    </div>
+
+    <div id="ioc-types" class="dashboard-container">
+        <p><strong>Selecciona un tipo de IoC:</strong></p>
+    </div>
+
+    <div class="dashboard-container" id="ioc-table-container" style="display:none;">
+        <h3 id="ioc-table-title"></h3>
+        <table id="ioc-table">
+            <thead>
+                <tr>
+                    <th class="indicator-col">Indicator</th>
+                    <th>Type</th>
+                    <th>Date Published</th>
+                    <th>Pulse Name</th>
+                    <th>Tags</th>
+                    <th>Threat Score</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div id="status"></div>
+
+    <script>
+        function formatDate(dateStr) {
+            if (!dateStr) return "";
+            const date = new Date(dateStr);
+            return isNaN(date) ? dateStr : date.toLocaleString();
+        }
+
+        function formatTags(tags) {
+            return Array.isArray(tags) ? tags.join(", ") : (tags || "");
+        }
+
+        function getRiskClass(score) {
+            if (score >= 7) return "high-risk";
+            if (score >= 4) return "medium-risk";
+            return "low-risk";
+        }
+
+        async function loadIocs(type) {
+            try {
+                const response = await fetch(`/iocs/type/${type}`);
+                const data = await response.json();
+
+                const tableBody = document.querySelector("#ioc-table tbody");
+                const title = document.getElementById("ioc-table-title");
+                const container = document.getElementById("ioc-table-container");
+
+                tableBody.innerHTML = "";
+                title.textContent = `Mostrando IoCs tipo: ${type}`;
+                container.style.display = "block";
+
+                if (!data.length) {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `<td colspan="6">No hay IoCs de tipo "${type}".</td>`;
+                    tableBody.appendChild(row);
+                    return;
+                }
+
+                data.forEach(ioc => {
+                    const row = document.createElement("tr");
+                    const score = ioc.threat_score || 0;
+
+                    row.classList.add(getRiskClass(score));
+                    row.innerHTML = `
+                        <td class="indicator-col">${ioc.indicator || ""}</td>
+                        <td>${(ioc.type || "").toLowerCase()}</td>
+                        <td>${formatDate(ioc.date)}</td>
+                        <td>${ioc.pulse_name || ""}</td>
+                        <td>${formatTags(ioc.tags)}</td>
+                        <td>${score}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error("Error cargando los IoCs:", error);
+                document.getElementById("status").textContent = "Error cargando IoCs.";
+            }
+        }
+
+        async function loadTypes() {
+            try {
+                const resp = await fetch("/ioc_types");
+                const rawTypes = await resp.json();
+
+                const seen = new Set();
+                const unique = [];
+
+                rawTypes.forEach(t => {
+                    const norm = t.trim().toLowerCase();
+                    if (!seen.has(norm)) {
+                        seen.add(norm);
+                        unique.push(norm);
+                    }
+                });
+
+                const container = document.getElementById("ioc-types");
+                container.innerHTML = "<p><strong>Selecciona un tipo de IoC:</strong></p>";
+                container.innerHTML += unique.map(t =>
+                    `<div class="ioc-type" onclick="loadIocs('${t}')">${t}</div>`
+                ).join('');
+            } catch (err) {
+                console.error("Error cargando tipos de IoC:", err);
+            }
+        }
+
+        document.getElementById("refreshBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("refreshBtn");
+            const status = document.getElementById("status");
+            btn.disabled = true;
+            status.textContent = "Actualizando IoCs...";
+            try {
+                const resp = await fetch("/refresh");
+                if (resp.ok) {
+                    status.textContent = "IoCs actualizados correctamente.";
+                    document.getElementById("ioc-table-container").style.display = "none";
+                    await loadTypes();
+                } else {
+                    status.textContent = "Error al actualizar IoCs.";
+                }
+            } catch (error) {
+                status.textContent = "Error al actualizar IoCs.";
+                console.error(error);
+            }
+            btn.disabled = false;
+            setTimeout(() => { status.textContent = ""; }, 3000);
+        });
+
+        document.getElementById("recalcBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("recalcBtn");
+            const status = document.getElementById("status");
+            btn.disabled = true;
+            status.textContent = "Recalculando threat_score...";
+            try {
+                const resp = await fetch("/recalculate");
+                if (resp.ok) {
+                    status.textContent = await resp.text();
+                    document.getElementById("ioc-table-container").style.display = "none";
+                } else {
+                    status.textContent = "Error al recalcular.";
+                }
+            } catch (error) {
+                console.error(error);
+                status.textContent = "Error al recalcular.";
+            }
+            btn.disabled = false;
+            setTimeout(() => { status.textContent = ""; }, 4000);
+        });
+
+        loadTypes();
+    </script>
+</body>
+</html>

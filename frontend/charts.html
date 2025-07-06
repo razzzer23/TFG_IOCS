@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Visualización Multidimensional Analítica de IoCs</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f9f9f9;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 10px;
+    }
+
+    .grid-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      padding: 20px;
+    }
+
+    .grid-item {
+      background: white;
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    canvas, #mapPlot {
+      width: 100% !important;
+      height: 400px !important;
+    }
+
+    h3 {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    #backBtn {
+      margin: 30px auto;
+      display: block;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Visualización Multidimensional Analítica de IoCs</h1>
+
+  <div class="grid-container">
+    <!-- Gráfico 1: Tipos de IoC -->
+    <div class="grid-item">
+      <h3>Distribución por Tipo</h3>
+      <canvas id="iocTypeChart"></canvas>
+    </div>
+
+    <!-- Gráfico 2: Mapa de países -->
+    <div class="grid-item">
+      <h3>Distribución Geográfica</h3>
+      <div id="mapPlot"></div>
+    </div>
+
+    <!-- Gráfico 3: Histograma Threat Score -->
+    <div class="grid-item">
+      <h3>Distribución de Threat Score</h3>
+      <canvas id="scoreChart"></canvas>
+    </div>
+
+    <!-- Gráfico 4: Nube de palabras de Tags -->
+	<div class="grid-item">
+	  <h3>Tags más frecuentes</h3>
+	  <img id="wordcloud" src="/tag_wordcloud" alt="Nube de palabras de Tags" style="width: 100%; height: auto;">
+	</div>
+
+
+    <!-- Gráfico 5: Media por tipo -->
+    <div class="grid-item">
+      <h3>Media de Threat Score por Tipo de IoC</h3>
+      <canvas id="avgScoreByTypeChart"></canvas>
+    </div>
+
+    <!-- Gráfico 6: Top tags -->
+	<div class="grid-item">
+	  <h3>Top 10 IoCs más repetidos</h3>
+	  <canvas id="topIocsChart"></canvas>
+	</div>
+  </div>
+
+  <a href="/"><button id="backBtn">Volver al Dashboard</button></a>
+
+  <script>
+    // Gráfico por tipo
+    fetch("/chartdata")
+      .then(res => res.json())
+      .then(data => {
+        const exclude = ["ipv6", "yara", "cidr"];
+        const labels = Object.keys(data).filter(k => !exclude.includes(k.toLowerCase()));
+        const values = labels.map(k => data[k]);
+
+        new Chart(document.getElementById("iocTypeChart"), {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [{
+              label: "Cantidad de IoCs",
+              data: values,
+              backgroundColor: "rgba(54, 162, 235, 0.6)",
+              borderColor: "rgba(54, 162, 235, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: { beginAtZero: true },
+              x: { title: { display: true, text: "Tipo de IoC" } }
+            }
+          }
+        });
+      });
+
+    // Mapa mundial
+    fetch("/countrydata")
+      .then(response => response.json())
+      .then(data => {
+        const countries = Object.keys(data);
+        const values = Object.values(data);
+        const mapData = [{
+          type: "choropleth",
+          locationmode: "ISO-3",
+          locations: countries,
+          z: values,
+          colorscale: "Reds",
+          colorbar: { title: "IoCs" }
+        }];
+        const layout = {
+          geo: {
+            scope: "world",
+            showland: true,
+            landcolor: "rgb(217, 217, 217)"
+          },
+          margin: { t: 0, b: 0 }
+        };
+        Plotly.newPlot("mapPlot", mapData, layout);
+      });
+
+    // Histograma Threat Score
+    fetch("/score_histogram")
+      .then(res => res.json())
+      .then(data => {
+        new Chart(document.getElementById("scoreChart"), {
+          type: "bar",
+          data: {
+            labels: Object.keys(data),
+            datasets: [{
+              label: "IoCs por Threat Score",
+              data: Object.values(data),
+              backgroundColor: "rgba(255, 99, 132, 0.4)",
+              borderColor: "rgba(255, 99, 132, 1)",
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: {
+              y: {
+                type: 'logarithmic',
+                beginAtZero: false,
+                title: {
+                  display: true,
+                  text: 'Número de IoCs (escala log)'
+                },
+                ticks: {
+                  callback: function(value) {
+                    return Number(value.toString());
+                  }
+                }
+              }
+            },
+            plugins: {
+              title: {
+                display: true,
+                text: "Distribución de Threat Score"
+              }
+            }
+          }
+        });
+      });
+
+    // Media por tipo
+    fetch("/avg_score_by_type")
+      .then(res => res.json())
+      .then(data => {
+        new Chart(document.getElementById("avgScoreByTypeChart"), {
+          type: "bar",
+          data: {
+            labels: Object.keys(data),
+            datasets: [{
+              label: "Media Threat Score",
+              data: Object.values(data),
+              backgroundColor: "orange"
+            }]
+          },
+          options: {
+            scales: {
+              y: { beginAtZero: true, max: 10 }
+            }
+          }
+        });
+      });
+
+    // Top 10 tags
+   
+	fetch("/top_iocs")
+	  .then(res => res.json())
+	  .then(data => {
+		new Chart(document.getElementById("topIocsChart"), {
+		  type: "bar",
+		  data: {
+			labels: Object.keys(data),
+			datasets: [{
+			  label: "Repeticiones",
+			  data: Object.values(data),
+			  backgroundColor: "darkred"
+			}]
+		  },
+		 options: {
+		  indexAxis: 'y',
+		  scales: {
+			x: {
+			  beginAtZero: true,
+			  ticks: {
+				precision: 0, // Fuerza a que los ticks sean enteros
+				stepSize: 1   // Opcional, fuerza incremento de 1 en 1
+			  }
+    }
+  }
+}
+
+		});
+	  });
+  </script>
+
+</body>
+</html>
