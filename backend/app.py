@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 import re
 
-EXCLUDED_COUNTRIES = {"MLI", "NER", "BFA"}  # Mali, Níger, Burkina Faso, etc.
+
 
 def detect_country_from_text(text):
     text = text.lower()
@@ -343,10 +343,10 @@ def save_iocs_to_es(iocs):
                             country = iso3
                             break
 
-        # === Calcular threat_score ===
+        #Calcular threat_score 
         threat_score = calculate_threat_score(ioc)
 
-        # === Preparar nuevo documento ===
+        
         doc = {
             "indicator": ioc.get("indicator"),
             "type": (ioc.get("type") or "unknown").lower(),
@@ -359,7 +359,7 @@ def save_iocs_to_es(iocs):
             "threat_score": threat_score
         }
 
-        # === Control de duplicados con seen_count ===
+        #Control de duplicados con seen_count 
         existing = es.get(index=INDEX_NAME, id=doc_id, ignore=[404])
         if existing.get("found"):
             old_doc = existing["_source"]
@@ -367,7 +367,7 @@ def save_iocs_to_es(iocs):
         else:
             doc["seen_count"] = 1
 
-        # === Guardar o actualizar ===
+        #Guardar o actualizar
         es.index(index=INDEX_NAME, id=doc_id, document=doc)
         count += 1
 
@@ -381,16 +381,16 @@ def refresh_iocs():
     print("Iniciando actualización completa de IoCs...")
 
     otx_iocs = fetch_otx_iocs(days_back=3)
-    #tv_iocs = fetch_threatview_iocs()
-    #uh_iocs = fetch_urlhaus_iocs()
+    tv_iocs = fetch_threatview_iocs()
+    uh_iocs = fetch_urlhaus_iocs()
     tf_iocs = fetch_threatfox_iocs()
-    #mb_iocs = fetch_malwarebazaar_iocs()
+    mb_iocs = fetch_malwarebazaar_iocs()
 
     save_iocs_to_es(otx_iocs)
-    #save_iocs_to_es(tv_iocs)
-    #save_iocs_to_es(uh_iocs)
+    save_iocs_to_es(tv_iocs)
+    save_iocs_to_es(uh_iocs)
     save_iocs_to_es(tf_iocs)
-    #save_iocs_to_es(mb_iocs)
+    save_iocs_to_es(mb_iocs)
 
     print("Actualización completa.")
     return "Todos los IoCs fueron descargados e indexados en Elasticsearch."
@@ -415,12 +415,12 @@ def charts():
 @app.route("/chartdata")
 def chart_data():
     query = {
-        "size": 0,  # no queremos documentos, solo agregaciones
+        "size": 0,  
         "aggs": {
             "ioc_types": {
                 "terms": {
                     "field": "type.keyword",
-                    "size": 50  # suficiente para incluir todos los tipos
+                    "size": 50  
                 }
             }
         }
@@ -439,7 +439,7 @@ def recalculate_threat_scores():
     batch_size = 1000
     updated = 0
 
-    # Iniciar scroll
+    #Iniciar scroll
     response = es.search(
         index=INDEX_NAME,
         scroll="2m",
@@ -461,7 +461,7 @@ def recalculate_threat_scores():
 
         print(f"[INFO] Procesados {updated} IoCs...")
 
-        # Obtener siguiente lote
+        #Obtener siguiente lote
         response = es.scroll(scroll_id=scroll_id, scroll="2m")
         scroll_id = response["_scroll_id"]
         hits = response["hits"]["hits"]
@@ -535,7 +535,7 @@ def get_iocs_by_type(ioc_type):
 def normalize_ioc_types():
     print("Iniciando normalización completa de tipos con scroll...")
 
-    # Diccionario de normalización
+    #Diccionario de normalización
     mapping = {
         "url": "url",
         "URL": "url",
@@ -554,7 +554,7 @@ def normalize_ioc_types():
         "CVE": "cve"
     }
 
-    # Iniciar scroll
+    #Iniciar scroll
     page = es.search(
         index=INDEX_NAME,
         scroll='2m',
@@ -610,7 +610,7 @@ def recalculate_country_field():
         doc_id = hit["_id"]
         ioc = hit["_source"]
 
-        # Recalcular país
+        #Recalcular país
         combined_text = (
             (ioc.get("pulse_name") or "") + " " +
             (ioc.get("description") or "") + " " +
@@ -671,7 +671,7 @@ def reanalyze_existing_iocs():
 
             country = None
 
-            # 1. GeoIP si es IP
+            #GeoIP si es IP
             if geoip_reader and ioc.get("type") == "ip" and ioc.get("indicator"):
                 try:
                     geo = geoip_reader.country(ioc["indicator"])
@@ -679,11 +679,11 @@ def reanalyze_existing_iocs():
                 except:
                     pass
 
-            # 2. Detección por nombre de país (tags o texto)
+            #Detección por nombre de país (tags o texto)
             if not country:
                 country = detect_country_from_text(combined_text)
 
-            # 3. Fallback por keyword manual
+            #Fallback por keyword manual
             if not country:
                 for keyword, iso3 in keyword_to_iso3.items():
                     if keyword in combined_text:
@@ -708,9 +708,9 @@ def reanalyze_existing_iocs():
 @app.route("/geoip_all")
 def apply_geoip_to_all():
     if not geoip_reader:
-        return "GeoLite2 database no encontrada. No se puede aplicar geolocalización."
+        return "GeoLite2 database no encontrada. No se puede aplicar geolocalización"
 
-    print("Aplicando GeoIP a todos los IoCs con tipo 'ip'...")
+    print("Aplica GeoIP a todos los IoCs con tipo ip...")
 
     scroll = es.search(
         index=INDEX_NAME,
@@ -764,7 +764,7 @@ def score_histogram():
 
     score_counts = Counter()
 
-    # Scroll por todos los IoCs
+    #Scroll por todos los IoCs
     page = es.search(
         index=INDEX_NAME,
         scroll='2m',
@@ -786,7 +786,7 @@ def score_histogram():
         sid = page['_scroll_id']
         scroll_size = len(page['hits']['hits'])
 
-    # Asegura todos los buckets del 1 al 10 aunque estén vacíos
+    #Asegura todos los buckets del 1 al 10 aunque estén vacíos
     full_hist = {i: score_counts.get(i, 0) for i in range(1, 11)}
 
     print(f"[Histograma de threat_score]: {full_hist}")
@@ -856,7 +856,7 @@ def tag_wordcloud():
     }
     res = es.search(index=INDEX_NAME, body=query)
 
-    # Tags que queremos excluir de la nube de palabras
+    #Tags que queremos excluir de la nube de palabras
     undesired_tags = {"urlhaus", "malwarebazaar", "threatfox", "otx", "cve", "ioc", "indicator", "source"}
 
     tag_freq = {}
